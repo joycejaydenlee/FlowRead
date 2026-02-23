@@ -10,7 +10,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { InputMethodCard } from '@/components/home/InputMethodCard';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { t } from '@/constants/translations';
-import { recognizeImage } from '@/services/ocr';
 import { extractPdfText } from '@/services/pdf';
 import { segmentText } from '@/services/textProcessor';
 import { useReadingStore } from '@/stores/readingStore';
@@ -44,16 +43,14 @@ export default function HomeScreen() {
       const { scannedImages } = await DocumentScanner.scanDocument();
 
       if (scannedImages && scannedImages.length > 0) {
-        setIsLoading(true);
-        setLoadingMessage(t(lang, 'loading'));
-        const detectedText = await recognizeImage(scannedImages[0]);
-        processAndNavigate(detectedText);
+        router.push({
+          pathname: '/image-preview',
+          params: { uris: JSON.stringify(scannedImages) },
+        });
       }
     } catch (e: any) {
       console.error('Document scanner error:', e);
       Alert.alert('Error', e.message || t(lang, 'ocrFailed'));
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -68,22 +65,20 @@ export default function HomeScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: false,
+        allowsMultipleSelection: true,
         quality: 1,
       });
 
-      if (!result.canceled) {
-        setIsLoading(true);
-        setLoadingMessage(t(lang, 'loading'));
-        const imageUri = result.assets[0].uri;
-        const detectedText = await recognizeImage(imageUri);
-        processAndNavigate(detectedText);
+      if (!result.canceled && result.assets.length > 0) {
+        const uris = result.assets.map((a) => a.uri);
+        router.push({
+          pathname: '/image-preview',
+          params: { uris: JSON.stringify(uris) },
+        });
       }
     } catch (e: any) {
-      console.error('Gallery OCR error:', e);
+      console.error('Gallery error:', e);
       Alert.alert('Error', e.message || t(lang, 'ocrFailed'));
-    } finally {
-      setIsLoading(false);
     }
   };
 
