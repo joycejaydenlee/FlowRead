@@ -1,0 +1,81 @@
+{
+  "expo": {
+    "name": "adhd-reader",
+    "slug": "adhd-reader",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "adhdreader",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.joycejaydenlee.adhdreader",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.joycejaydenlee.adhdreader"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow FlowRead to access camera for text scanning."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you read PDFs and images."
+        }
+      ],
+      "expo-web-browser",
+      "react-native-document-scanner-plugin",
+      [
+        "rn-mlkit-ocr",
+        {
+          "ocrModels": [
+            "latin",
+            "chinese"
+          ]
+        }
+      ],
+      ["expo-build-properties", {
+        "ios": { "deploymentTarget": "15.5" }
+      }]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c11f0574-b582-41fa-b3bd-ca3efe4b9da9"
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+diff --git a/node_modules/rn-mlkit-ocr/RnMlkitOcr.podspec b/node_modules/rn-mlkit-ocr/RnMlkitOcr.podspec
+index 18839e5..a975e63 100644
+--- a/node_modules/rn-mlkit-ocr/RnMlkitOcr.podspec
++++ b/node_modules/rn-mlkit-ocr/RnMlkitOcr.podspec
+@@ -2,7 +2,8 @@ require "json"
+ 
+ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
+ 
+-selected_subspecs = defined?($ReactNativeOcrSubspecs) ? $ReactNativeOcrSubspecs : ['latin', 'chinese', 'devanagari', 'japanese', 'korean']
++raw_subspecs = defined?($ReactNativeOcrSubspecs) ? $ReactNativeOcrSubspecs : ['latin', 'chinese', 'devanagari', 'japanese', 'korean']
++selected_subspecs = raw_subspecs.map { |s| s.downcase }
+ 
+ 
+ Pod::Spec.new do |s|
