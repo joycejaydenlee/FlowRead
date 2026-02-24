@@ -53,6 +53,10 @@ export const translations: Record<InterfaceLanguage, Record<string, string>> = {
     addMore: '添加更多',
     cropTitle: '裁剪图片',
     cropConfirm: '应用',
+    scanLimitTitle: '今日扫描次数已用完',
+    scanLimitBody: '您已使用今日全部 3 次免费扫描。升级 Pro 版可享无限次扫描。',
+    upgradePro: '升级 Pro',
+    maybeLater: '稍后再说',
   },
   'zh-HK': {
     appName: 'FlowRead',
@@ -106,6 +110,10 @@ export const translations: Record<InterfaceLanguage, Record<string, string>> = {
     addMore: '加多啲',
     cropTitle: '裁剪圖片',
     cropConfirm: '套用',
+    scanLimitTitle: '今日掃描次數已用完',
+    scanLimitBody: '您已使用今日全部 3 次免費掃描。升級 Pro 版可享無限次掃描。',
+    upgradePro: '升級 Pro',
+    maybeLater: '稍後再說',
   },
   'en-US': {
     appName: 'FlowRead',
@@ -159,6 +167,10 @@ export const translations: Record<InterfaceLanguage, Record<string, string>> = {
     addMore: 'Add More',
     cropTitle: 'Crop Image',
     cropConfirm: 'Apply',
+    scanLimitTitle: 'Daily Limit Reached',
+    scanLimitBody: "You've used all 3 free scans for today. Upgrade to Pro for unlimited scans.",
+    upgradePro: 'Upgrade to Pro',
+    maybeLater: 'Maybe Later',
   },
 };
 

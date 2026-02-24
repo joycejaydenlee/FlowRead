@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -20,7 +21,12 @@ import { t } from '@/constants/translations';
 import { recognizeImage } from '@/services/ocr';
 import { segmentText } from '@/services/textProcessor';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { SubscriptionModal } from '@/components/ui/SubscriptionModal';
 import { ImageCropEditor } from '@/components/ImageCropEditor';
+
+const SCAN_LIMIT = 3;
+const STORAGE_KEY_DATE = 'scanLimit_date';
+const STORAGE_KEY_COUNT = 'scanLimit_count';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const THUMB_SIZE = 80;
@@ -51,6 +57,37 @@ export default function ImagePreviewScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [isCropping, setIsCropping] = useState(false);
+  const [scanCount, setScanCount] = useState(0);
+  const [isSubscriptionVisible, setIsSubscriptionVisible] = useState(false);
+
+  const checkScanLimit = async (): Promise<boolean> => {
+    const today = new Date().toISOString().slice(0, 10);
+    const [lastScanDate, storedCount] = await AsyncStorage.multiGet([
+      STORAGE_KEY_DATE,
+      STORAGE_KEY_COUNT,
+    ]);
+
+    const date = lastScanDate[1];
+    const currentCount = date === today ? parseInt(storedCount[1] ?? '0', 10) : 0;
+
+    setScanCount(currentCount);
+
+    if (currentCount >= SCAN_LIMIT) {
+      setIsSubscriptionVisible(true);
+      return false;
+    }
+    return true;
+  };
+
+  const incrementScanCount = async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const newCount = scanCount + 1;
+    await AsyncStorage.multiSet([
+      [STORAGE_KEY_DATE, today],
+      [STORAGE_KEY_COUNT, String(newCount)],
+    ]);
+    setScanCount(newCount);
+  };
 
   const activeImage = images[activeIndex];
 
@@ -108,6 +145,10 @@ export default function ImagePreviewScreen() {
 
   const handleScanAll = async () => {
     if (images.length === 0) return;
+
+    const allowed = await checkScanLimit();
+    if (!allowed) return;
+
     setIsProcessing(true);
     setProgress({ current: 0, total: images.length });
 
@@ -150,6 +191,7 @@ export default function ImagePreviewScreen() {
       );
     }
 
+    await incrementScanCount();
     setSentences(sentences, combinedText);
     addToHistory(combinedText, sentences.length);
     router.replace('/reader');
@@ -288,6 +330,12 @@ export default function ImagePreviewScreen() {
           onConfirm={handleCropConfirm}
         />
       )}
+
+      {/* Subscription Modal */}
+      <SubscriptionModal
+        visible={isSubscriptionVisible}
+        onClose={() => setIsSubscriptionVisible(false)}
+      />
     </View>
   );
 }
