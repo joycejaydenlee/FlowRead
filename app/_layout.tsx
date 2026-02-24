@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useReadingStore } from "@/stores/readingStore";
+import { useSubscriptionStore } from "@/stores/subscriptionStore";
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const loadSettings = useSettingsStore((s) => s.loadFromStorage);
   const loadHistory = useReadingStore((s) => s.loadHistory);
   const loadProgress = useReadingStore((s) => s.loadProgress);
+  const initSubscription = useSubscriptionStore((s) => s.initialize);
 
   useEffect(() => {
-    Promise.all([loadSettings(), loadHistory(), loadProgress()]).then(() => setReady(true));
+    Promise.all([loadSettings(), loadHistory(), loadProgress(), initSubscription()]).then(() => setReady(true));
   }, []);
 
   if (!ready) {

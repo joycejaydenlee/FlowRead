@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useReadingStore } from '@/stores/readingStore';
+import { useSubscriptionStore } from '@/stores/subscriptionStore';
 import { t } from '@/constants/translations';
 import { recognizeImage } from '@/services/ocr';
 import { segmentText } from '@/services/textProcessor';
@@ -25,8 +26,12 @@ import { SubscriptionModal } from '@/components/ui/SubscriptionModal';
 import { ImageCropEditor } from '@/components/ImageCropEditor';
 
 const SCAN_LIMIT = 3;
+const AD_BONUS_PER_WATCH = 3;
+const AD_WATCH_LIMIT = 5;
 const STORAGE_KEY_DATE = 'scanLimit_date';
 const STORAGE_KEY_COUNT = 'scanLimit_count';
+const STORAGE_KEY_BONUS = 'scanLimit_bonus';
+const STORAGE_KEY_AD_COUNT = 'scanLimit_adWatchCount';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const THUMB_SIZE = 80;
@@ -58,21 +63,39 @@ export default function ImagePreviewScreen() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [isCropping, setIsCropping] = useState(false);
   const [scanCount, setScanCount] = useState(0);
+  const [bonusScans, setBonusScans] = useState(0);
+  const [adWatchCount, setAdWatchCount] = useState(0);
   const [isSubscriptionVisible, setIsSubscriptionVisible] = useState(false);
 
-  const checkScanLimit = async (): Promise<boolean> => {
+  const isPro = useSubscriptionStore((s) => s.isPro);
+
+  const getTodayValues = async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const [lastScanDate, storedCount] = await AsyncStorage.multiGet([
+    const results = await AsyncStorage.multiGet([
       STORAGE_KEY_DATE,
       STORAGE_KEY_COUNT,
+      STORAGE_KEY_BONUS,
+      STORAGE_KEY_AD_COUNT,
     ]);
+    const date = results[0][1];
+    const isToday = date === today;
+    return {
+      today,
+      count: isToday ? parseInt(results[1][1] ?? '0', 10) : 0,
+      bonus: isToday ? parseInt(results[2][1] ?? '0', 10) : 0,
+      adCount: isToday ? parseInt(results[3][1] ?? '0', 10) : 0,
+    };
+  };
 
-    const date = lastScanDate[1];
-    const currentCount = date === today ? parseInt(storedCount[1] ?? '0', 10) : 0;
+  const checkScanLimit = async (): Promise<boolean> => {
+    if (isPro) return true;
 
-    setScanCount(currentCount);
+    const { count, bonus, adCount } = await getTodayValues();
+    setScanCount(count);
+    setBonusScans(bonus);
+    setAdWatchCount(adCount);
 
-    if (currentCount >= SCAN_LIMIT) {
+    if (count >= SCAN_LIMIT + bonus) {
       setIsSubscriptionVisible(true);
       return false;
     }
@@ -87,6 +110,23 @@ export default function ImagePreviewScreen() {
       [STORAGE_KEY_COUNT, String(newCount)],
     ]);
     setScanCount(newCount);
+  };
+
+  const handleAdReward = async () => {
+    const { today, bonus, adCount } = await getTodayValues();
+    const newBonus = bonus + AD_BONUS_PER_WATCH;
+    const newAdCount = adCount + 1;
+    await AsyncStorage.multiSet([
+      [STORAGE_KEY_DATE, today],
+      [STORAGE_KEY_BONUS, String(newBonus)],
+      [STORAGE_KEY_AD_COUNT, String(newAdCount)],
+    ]);
+    setBonusScans(newBonus);
+    setAdWatchCount(newAdCount);
+
+    const remaining = SCAN_LIMIT + newBonus - scanCount;
+    Alert.alert('', t(lang, 'adRewardSuccess', { remaining }));
+    setIsSubscriptionVisible(false);
   };
 
   const activeImage = images[activeIndex];
@@ -335,6 +375,9 @@ export default function ImagePreviewScreen() {
       <SubscriptionModal
         visible={isSubscriptionVisible}
         onClose={() => setIsSubscriptionVisible(false)}
+        onAdReward={handleAdReward}
+        adWatchCount={adWatchCount}
+        adWatchLimit={AD_WATCH_LIMIT}
       />
     </View>
   );

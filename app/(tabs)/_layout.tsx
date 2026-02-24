@@ -27,6 +27,13 @@ export default function TabLayout() {
             height: 88,
             paddingBottom: 30,
             paddingTop: 8,
+            flexDirection: 'row',
+            justifyContent: 'space-around',
+            width: '100%',
+            paddingHorizontal: 0,
+          },
+          tabBarItemStyle: {
+            flex: 1,
           },
           tabBarLabelStyle: {
             fontSize: 12,
@@ -73,7 +80,7 @@ export default function TabLayout() {
             },
             tabBarButton: (props) => (
               <Pressable
-                style={props.style}
+                style={[props.style, { flex: 1 }]}
                 onPress={() => setIsSubscriptionVisible(true)}
                 accessibilityRole="button"
                 accessibilityLabel="Upgrade to Pro"
