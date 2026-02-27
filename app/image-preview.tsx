@@ -1,37 +1,37 @@
-import { useState, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  Image,
-  Pressable,
-  FlatList,
   Alert,
   Dimensions,
+  FlatList,
+  Image,
+  Pressable,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 
-import { useSettingsStore } from '@/stores/settingsStore';
-import { useReadingStore } from '@/stores/readingStore';
-import { useSubscriptionStore } from '@/stores/subscriptionStore';
-import { t } from '@/constants/translations';
-import { recognizeImage } from '@/services/ocr';
-import { segmentText } from '@/services/textProcessor';
+import { ImageCropEditor } from '@/components/ImageCropEditor';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { SubscriptionModal } from '@/components/ui/SubscriptionModal';
-import { ImageCropEditor } from '@/components/ImageCropEditor';
-
-const SCAN_LIMIT = 3;
-const AD_BONUS_PER_WATCH = 3;
-const AD_WATCH_LIMIT = 5;
-const STORAGE_KEY_DATE = 'scanLimit_date';
-const STORAGE_KEY_COUNT = 'scanLimit_count';
-const STORAGE_KEY_BONUS = 'scanLimit_bonus';
-const STORAGE_KEY_AD_COUNT = 'scanLimit_adWatchCount';
+import { t } from '@/constants/translations';
+import { recognizeImage } from '@/services/ocr';
+import {
+  AD_WATCH_LIMIT,
+  SCAN_LIMIT,
+  addAdBonus,
+  getTodayValues,
+  incrementScanCountBy,
+  isLimitReached,
+  remainingScans,
+} from '@/services/scanLimit';
+import { segmentText } from '@/services/textProcessor';
+import { useReadingStore } from '@/stores/readingStore';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { useSubscriptionStore } from '@/stores/subscriptionStore';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const THUMB_SIZE = 80;
@@ -62,69 +62,19 @@ export default function ImagePreviewScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [isCropping, setIsCropping] = useState(false);
-  const [scanCount, setScanCount] = useState(0);
   const [bonusScans, setBonusScans] = useState(0);
   const [adWatchCount, setAdWatchCount] = useState(0);
   const [isSubscriptionVisible, setIsSubscriptionVisible] = useState(false);
 
   const isPro = useSubscriptionStore((s) => s.isPro);
 
-  const getTodayValues = async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const results = await AsyncStorage.multiGet([
-      STORAGE_KEY_DATE,
-      STORAGE_KEY_COUNT,
-      STORAGE_KEY_BONUS,
-      STORAGE_KEY_AD_COUNT,
-    ]);
-    const date = results[0][1];
-    const isToday = date === today;
-    return {
-      today,
-      count: isToday ? parseInt(results[1][1] ?? '0', 10) : 0,
-      bonus: isToday ? parseInt(results[2][1] ?? '0', 10) : 0,
-      adCount: isToday ? parseInt(results[3][1] ?? '0', 10) : 0,
-    };
-  };
-
-  const checkScanLimit = async (): Promise<boolean> => {
-    if (isPro) return true;
-
-    const { count, bonus, adCount } = await getTodayValues();
-    setScanCount(count);
-    setBonusScans(bonus);
-    setAdWatchCount(adCount);
-
-    if (count >= SCAN_LIMIT + bonus) {
-      setIsSubscriptionVisible(true);
-      return false;
-    }
-    return true;
-  };
-
-  const incrementScanCount = async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const newCount = scanCount + 1;
-    await AsyncStorage.multiSet([
-      [STORAGE_KEY_DATE, today],
-      [STORAGE_KEY_COUNT, String(newCount)],
-    ]);
-    setScanCount(newCount);
-  };
-
   const handleAdReward = async () => {
-    const { today, bonus, adCount } = await getTodayValues();
-    const newBonus = bonus + AD_BONUS_PER_WATCH;
-    const newAdCount = adCount + 1;
-    await AsyncStorage.multiSet([
-      [STORAGE_KEY_DATE, today],
-      [STORAGE_KEY_BONUS, String(newBonus)],
-      [STORAGE_KEY_AD_COUNT, String(newAdCount)],
-    ]);
+    const vals = await getTodayValues();
+    const { newBonus, newAdCount } = await addAdBonus(vals.bonus, vals.adCount);
     setBonusScans(newBonus);
     setAdWatchCount(newAdCount);
 
-    const remaining = SCAN_LIMIT + newBonus - scanCount;
+    const remaining = SCAN_LIMIT + newBonus - vals.count;
     Alert.alert('', t(lang, 'adRewardSuccess', { remaining }));
     setIsSubscriptionVisible(false);
   };
@@ -186,17 +136,25 @@ export default function ImagePreviewScreen() {
   const handleScanAll = async () => {
     if (images.length === 0) return;
 
-    const allowed = await checkScanLimit();
-    if (!allowed) return;
+    // Check how many scans the user can do
+    const vals = await getTodayValues();
+    if (!isPro && isLimitReached(vals.count, vals.bonus)) {
+      setBonusScans(vals.bonus);
+      setAdWatchCount(vals.adCount);
+      setIsSubscriptionVisible(true);
+      return;
+    }
+
+    const allowed = isPro ? images.length : Math.min(images.length, remainingScans(vals.count, vals.bonus));
 
     setIsProcessing(true);
-    setProgress({ current: 0, total: images.length });
+    setProgress({ current: 0, total: allowed });
 
     const textParts: string[] = [];
     const failures: number[] = [];
 
-    for (let i = 0; i < images.length; i++) {
-      setProgress({ current: i + 1, total: images.length });
+    for (let i = 0; i < allowed; i++) {
+      setProgress({ current: i + 1, total: allowed });
       try {
         const text = await recognizeImage(images[i].uri);
         textParts.push(text);
@@ -207,6 +165,14 @@ export default function ImagePreviewScreen() {
     }
 
     setIsProcessing(false);
+
+    // Increment count by the number of images actually processed
+    if (!isPro) {
+      const processed = allowed - failures.length;
+      if (processed > 0) {
+        await incrementScanCountBy(processed);
+      }
+    }
 
     const combinedText = textParts.join('\n\n');
     if (combinedText.trim().length === 0) {
@@ -231,7 +197,18 @@ export default function ImagePreviewScreen() {
       );
     }
 
-    await incrementScanCount();
+    // If some images were skipped due to limit, notify the user
+    if (allowed < images.length) {
+      Alert.alert(
+        '',
+        lang === 'en-US'
+          ? `Only ${allowed} of ${images.length} images were scanned (daily limit). Upgrade to Pro for unlimited scans.`
+          : lang === 'zh-HK'
+            ? `因每日限額，僅掃描了 ${allowed}/${images.length} 張圖片。升級 Pro 享無限掃描。`
+            : `因每日限额，仅扫描了 ${allowed}/${images.length} 张图片。升级 Pro 享无限扫描。`,
+      );
+    }
+
     setSentences(sentences, combinedText);
     addToHistory(combinedText, sentences.length);
     router.replace('/reader');

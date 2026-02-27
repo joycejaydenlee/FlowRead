@@ -1,19 +1,30 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
 import DocumentScanner from 'react-native-document-scanner-plugin';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { InputMethodCard } from '@/components/home/InputMethodCard';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { SubscriptionModal } from '@/components/ui/SubscriptionModal';
 import { t } from '@/constants/translations';
 import { extractPdfText } from '@/services/pdf';
+import {
+  AD_WATCH_LIMIT,
+  SCAN_LIMIT,
+  addAdBonus,
+  getTodayValues,
+  incrementScanCount,
+  isLimitReached,
+  remainingScans,
+} from '@/services/scanLimit';
 import { segmentText } from '@/services/textProcessor';
 import { useReadingStore } from '@/stores/readingStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useSubscriptionStore } from '@/stores/subscriptionStore';
 
 export default function HomeScreen() {
   const colors = useSettingsStore((s) => s.colors);
@@ -24,8 +35,49 @@ export default function HomeScreen() {
   const savedActiveIndex = useReadingStore((s) => s.activeIndex);
   const hasSavedProgress = savedSentences.length > 0;
 
+  const isPro = useSubscriptionStore((s) => s.isPro);
+
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [isSubscriptionVisible, setIsSubscriptionVisible] = useState(false);
+  const [bonusScans, setBonusScans] = useState(0);
+  const [adWatchCount, setAdWatchCount] = useState(0);
+  const [remaining, setRemaining] = useState(SCAN_LIMIT);
+
+  // Refresh scan count every time the tab is focused
+  useFocusEffect(
+    useCallback(() => {
+      if (isPro) return;
+      getTodayValues().then((vals) => {
+        setRemaining(remainingScans(vals.count, vals.bonus));
+        setBonusScans(vals.bonus);
+        setAdWatchCount(vals.adCount);
+      });
+    }, [isPro]),
+  );
+
+  const checkScanLimit = async (): Promise<boolean> => {
+    if (isPro) return true;
+    const { count, bonus, adCount } = await getTodayValues();
+    setBonusScans(bonus);
+    setAdWatchCount(adCount);
+    if (isLimitReached(count, bonus)) {
+      setIsSubscriptionVisible(true);
+      return false;
+    }
+    return true;
+  };
+
+  const handleAdReward = async () => {
+    const vals = await getTodayValues();
+    const { newBonus, newAdCount } = await addAdBonus(vals.bonus, vals.adCount);
+    setBonusScans(newBonus);
+    setAdWatchCount(newAdCount);
+    const newRemaining = remainingScans(vals.count, newBonus);
+    setRemaining(newRemaining);
+    Alert.alert('', t(lang, 'adRewardSuccess', { remaining: newRemaining }));
+    setIsSubscriptionVisible(false);
+  };
 
   const processAndNavigate = (text: string) => {
     const sentences = segmentText(text);
@@ -39,6 +91,9 @@ export default function HomeScreen() {
   };
 
   const handleCamera = async () => {
+    const allowed = await checkScanLimit();
+    if (!allowed) return;
+
     try {
       const { scannedImages } = await DocumentScanner.scanDocument();
 
@@ -55,6 +110,9 @@ export default function HomeScreen() {
   };
 
   const handleGallery = async () => {
+    const allowed = await checkScanLimit();
+    if (!allowed) return;
+
     try {
       const permission =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -83,6 +141,9 @@ export default function HomeScreen() {
   };
 
   const handlePdf = async () => {
+    const allowed = await checkScanLimit();
+    if (!allowed) return;
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
@@ -99,6 +160,8 @@ export default function HomeScreen() {
         const text = await extractPdfText(safeUri, (current, total) => {
           setLoadingMessage(t(lang, 'processing', { current, total }));
         });
+        await incrementScanCount();
+        setRemaining((r) => Math.max(0, r - 1));
         processAndNavigate(text);
       }
     } catch (e) {
@@ -169,9 +232,42 @@ export default function HomeScreen() {
           onPress={handlePdf}
         />
 
+        {/* Scan limit counter (free users only) */}
+        {!isPro && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              paddingVertical: 12,
+              marginTop: 16,
+              borderWidth: 1,
+              borderColor: remaining === 0 ? colors.accent : colors.border,
+            }}
+          >
+            <Text style={{ color: remaining === 0 ? colors.accent : colors.textSecondary, fontSize: 13 }}>
+              {lang === 'en-US'
+                ? `${remaining} scan${remaining !== 1 ? 's' : ''} remaining today`
+                : lang === 'zh-HK'
+                  ? `今日剩餘 ${remaining} 次掃描`
+                  : `今日剩余 ${remaining} 次扫描`}
+            </Text>
+          </View>
+        )}
+
       </ScrollView>
 
       <LoadingOverlay visible={isLoading} message={loadingMessage} />
+
+      <SubscriptionModal
+        visible={isSubscriptionVisible}
+        onClose={() => setIsSubscriptionVisible(false)}
+        onAdReward={handleAdReward}
+        adWatchCount={adWatchCount}
+        adWatchLimit={AD_WATCH_LIMIT}
+      />
     </SafeAreaView>
   );
 }
